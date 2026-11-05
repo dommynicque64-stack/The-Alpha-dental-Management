@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-brand-50: #effafa;
+  --color-brand-100: #d7f1f1;
+  --color-brand-200: #b0e3e4;
+  --color-brand-300: #7dcfd2;
+  --color-brand-400: #44b3ba;
+  --color-brand-500: #2a979f;
+  --color-brand-600: #257a84;
+  --color-brand-700: #23646c;
+  --color-brand-800: #225159;
+  --color-brand-900: #21454b;
+  --color-brand-950: #102e34;
+  --color-accent-500: #2563eb;
+  --color-accent-600: #1d4ed8;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f6f9fb;
+  color: #0f2a33;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Slim scrollbars for nav areas */
+.slim-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.slim-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+.slim-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Recharts polish */
+.recharts-wrapper :focus { outline: none; }
+
+/* Calendar grid lines */
+.cal-cell { min-height: 88px; }
+@media (max-width: 768px) { .cal-cell { min-height: 56px; } }
+
+
+/* ── Clinic themes ─────────────────────────────────────────────────── */
+html[data-theme="purple-pink"] body { background-color: #fff7fb; }
+html[data-theme="purple-pink"] .bg-teal-600 { background-color: #7c3aed !important; }
+html[data-theme="purple-pink"] .hover\:bg-teal-700:hover { background-color: #6d28d9 !important; }
+html[data-theme="purple-pink"] .text-teal-700, html[data-theme="purple-pink"] .text-teal-600 { color: #7c3aed !important; }
+html[data-theme="purple-pink"] .border-teal-600 { border-color: #7c3aed !important; }
+html[data-theme="purple-pink"] .bg-teal-50 { background-color: #fce7f3 !important; }
+html[data-theme="purple-pink"] .bg-teal-100 { background-color: #fce7f3 !important; }
+html[data-theme="purple-pink"] .text-teal-800 { color: #86198f !important; }
+html[data-theme="purple-pink"] .focus\:border-teal-500:focus { border-color: #a855f7 !important; }
+html[data-theme="purple-pink"] .focus\:ring-teal-100:focus { --tw-ring-color: #fce7f3 !important; }
+html[data-theme="purple-pink"] .bg-gradient-to-br { background-image: none !important; background-color: #7c3aed !important; }
+
+html[data-theme="pink-white"] body { background-color: #fff8fb; }
+html[data-theme="pink-white"] .bg-teal-600 { background-color: #db2777 !important; }
+html[data-theme="pink-white"] .hover\:bg-teal-700:hover { background-color: #be185d !important; }
+html[data-theme="pink-white"] .text-teal-700, html[data-theme="pink-white"] .text-teal-600 { color: #db2777 !important; }
+html[data-theme="pink-white"] .border-teal-600 { border-color: #db2777 !important; }
+html[data-theme="pink-white"] .bg-teal-50, html[data-theme="pink-white"] .bg-teal-100 { background-color: #fce7f3 !important; }
+html[data-theme="pink-white"] .text-teal-800 { color: #9d174d !important; }
+html[data-theme="pink-white"] .bg-gradient-to-br { background-image: none !important; background-color: #db2777 !important; }
+
+html[data-theme="purple-sky"] body { background-color: #f5f9ff; }
+html[data-theme="purple-sky"] .bg-teal-600 { background-color: #6d28d9 !important; }
+html[data-theme="purple-sky"] .hover\:bg-teal-700:hover { background-color: #5b21b6 !important; }
+html[data-theme="purple-sky"] .text-teal-700, html[data-theme="purple-sky"] .text-teal-600 { color: #6d28d9 !important; }
+html[data-theme="purple-sky"] .border-teal-600 { border-color: #6d28d9 !important; }
+html[data-theme="purple-sky"] .bg-teal-50, html[data-theme="purple-sky"] .bg-teal-100 { background-color: #e0f2fe !important; }
+html[data-theme="purple-sky"] .text-teal-800 { color: #4c1d95 !important; }
+html[data-theme="purple-sky"] .bg-gradient-to-br { background-image: none !important; background-color: #6d28d9 !important; }
+
+html[data-theme="purple-pink"] aside { background-color: #581c87 !important; border-color: #6b21a8 !important; }
+html[data-theme="purple-pink"] aside .text-slate-900, html[data-theme="purple-pink"] aside .text-slate-600 { color: #fff !important; }
+html[data-theme="purple-pink"] aside .text-slate-500 { color: #f5d0fe !important; }
+html[data-theme="purple-pink"] aside .bg-teal-50 { background-color: #7e22ce !important; }
+html[data-theme="purple-pink"] aside .text-teal-700 { color: #fce7f3 !important; }
+html[data-theme="purple-pink"] aside a { color: #f5d0fe; }
+html[data-theme="purple-pink"] aside a:hover { background-color: #7e22ce !important; color: #fff !important; }
+html[data-theme="purple-pink"] aside a.bg-teal-600 { background-color: #ec4899 !important; color: #fff !important; }
+
+html[data-theme="pink-white"] aside { background-color: #fff1f2 !important; border-color: #fbcfe8 !important; }
+html[data-theme="pink-white"] aside a.bg-teal-600 { background-color: #db2777 !important; color: #fff !important; }
+
+html[data-theme="purple-sky"] aside { background-color: #4c1d95 !important; border-color: #6d28d9 !important; }
+html[data-theme="purple-sky"] aside .text-slate-900, html[data-theme="purple-sky"] aside .text-slate-600 { color: #fff !important; }
+html[data-theme="purple-sky"] aside .text-slate-500 { color: #ddd6fe !important; }
+html[data-theme="purple-sky"] aside .bg-teal-50 { background-color: #5b21b6 !important; }
+html[data-theme="purple-sky"] aside a { color: #e0f2fe; }
+html[data-theme="purple-sky"] aside a.bg-teal-600 { background-color: #38bdf8 !important; color: #082f49 !important; }
+
+:root{--brand-purple:#722F99;--brand-pink:#FF76CE;--brand-baby:#fff1fb} body{background:var(--brand-baby)} button.bg-violet-600,button.bg-violet-700{background-color:var(--brand-purple)!important} .text-violet-700,.text-violet-600{color:var(--brand-purple)!important} .bg-violet-100{background-color:#f4e7fa!important}
+/* SifaDent production brand */
+:root { --sifadent-purple: #722F99; --sifadent-pink: #FF76CE; --sifadent-baby: #fff1fb; }
+html, body, #root { min-height: 100%; }
+body { background: var(--sifadent-baby); }
+html[data-theme="purple-pink"] body { background: var(--sifadent-baby) !important; }
+html[data-theme="purple-pink"] .bg-teal-600, html[data-theme="purple-pink"] button.bg-violet-600, html[data-theme="purple-pink"] button.bg-violet-700 { background-color: var(--sifadent-purple) !important; }
+html[data-theme="purple-pink"] .hover\:bg-teal-700:hover { background-color: #5d267d !important; }
+html[data-theme="purple-pink"] .text-teal-700, html[data-theme="purple-pink"] .text-teal-600, html[data-theme="purple-pink"] .text-violet-700, html[data-theme="purple-pink"] .text-violet-600 { color: var(--sifadent-purple) !important; }
+html[data-theme="purple-pink"] .bg-teal-50, html[data-theme="purple-pink"] .bg-teal-100, html[data-theme="purple-pink"] .bg-violet-100 { background-color: #f7e8f5 !important; }
+html[data-theme="purple-pink"] aside { background-color: var(--sifadent-purple) !important; border-color: #5d267d !important; }
+html[data-theme="purple-pink"] aside a.bg-teal-600 { background-color: var(--sifadent-pink) !important; }

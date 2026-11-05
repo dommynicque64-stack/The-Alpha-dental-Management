@@ -1,0 +1,24 @@
+{
+  "name": "Alpha Dental Management",
+  "short_name": "Alpha Dental",
+  "description": "Dental clinic management system",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f5360",
+  "icons": [
+    {
+      "src": "/alpha-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/alpha-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
