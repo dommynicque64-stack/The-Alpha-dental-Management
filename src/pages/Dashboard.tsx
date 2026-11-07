@@ -34,7 +34,9 @@ export default function Dashboard() {
     { label: 'Completed (Today)', value: String(data.completedAppointments), icon: CheckCircle2, bg: 'bg-emerald-500', link: '/appointments' },
     ...(staff?.role === 'receptionist'
       ? [{ label: "Today's Payments", value: formatKES(data.todayRevenue), icon: Banknote, bg: 'bg-violet-500', link: '/payments' }]
-      : [
+      : staff?.role === 'dentist'
+        ? []
+        : [
           { label: 'Outstanding Balance', value: formatKES(data.outstandingBalance), icon: Wallet, bg: 'bg-amber-500', link: '/billing' },
           { label: "Today's Revenue", value: formatKES(data.todayRevenue), icon: Banknote, bg: 'bg-violet-500', link: '/billing' },
         ]),

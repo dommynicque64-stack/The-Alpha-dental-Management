@@ -16,7 +16,12 @@ export default async function handler(req, res) {
       if (auth.staff.role !== 'admin') return res.status(403).json({ error: 'Only admins can change settings.' });
       const entries = Object.entries(req.body || {});
       for (const [key, value] of entries) {
-        const { error } = await supabase.from('clinic_settings').upsert({ key, value: String(value ?? ''), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        let savedValue = String(value ?? '').trim();
+        if (key === 'clinic_website' && savedValue) {
+          if (!/^https?:\/\//i.test(savedValue)) savedValue = `https://${savedValue}`;
+          try { new URL(savedValue); } catch { return res.status(400).json({ error: 'Enter a valid clinic website URL.' }); }
+        }
+        const { error } = await supabase.from('clinic_settings').upsert({ key, value: savedValue, updated_at: new Date().toISOString() }, { onConflict: 'key' });
         if (error) throw error;
       }
       const { data } = await supabase.from('clinic_settings').select('*').order('key');

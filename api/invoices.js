@@ -26,6 +26,9 @@ export default async function handler(req, res) {
       if (!b.patient_id || b.total_amount == null) return res.status(400).json({ error: 'patient_id and total_amount are required.' });
       const original = Number(b.original_amount ?? b.total_amount);
       const discount = Math.max(0, Number(b.discount_amount || 0));
+      if (!Number.isFinite(original) || original < 0) return res.status(400).json({ error: 'Original amount must be a valid non-negative number.' });
+      if (!Number.isFinite(discount) || discount < 0) return res.status(400).json({ error: 'Discount amount must be a valid non-negative number.' });
+      if (discount > original) return res.status(400).json({ error: 'Discount cannot exceed the original amount.' });
       const total = Math.max(0, original - discount);
       const invNo = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
       const { data, error } = await supabase.from('invoices').insert({
@@ -66,7 +69,10 @@ export default async function handler(req, res) {
       }
       if (curErr) throw curErr;
       const next = { ...cur, ...patch };
-      const balance = Number(next.total_amount) - Number(next.amount_paid || 0);
+      if (Number(next.amount_paid || 0) > Number(next.total_amount || 0)) {
+        return res.status(400).json({ error: 'Amount paid cannot exceed the final payable amount. Record additional payments only against invoices.' });
+      }
+      const balance = Math.max(0, Number(next.total_amount) - Number(next.amount_paid || 0));
       patch.balance = balance;
       patch.status = balance <= 0 ? 'paid' : (Number(next.amount_paid || 0) > 0 ? 'partially_paid' : (patch.status && patch.status !== 'paid' && patch.status !== 'partially_paid' ? patch.status : 'unpaid'));
       patch.updated_at = new Date().toISOString();
@@ -78,6 +84,9 @@ export default async function handler(req, res) {
       if (staff.role !== 'admin') return res.status(403).json({ error: 'Only admins can delete invoices.' });
       const id = req.body?.id || req.query.id;
       if (!id) return res.status(400).json({ error: 'id is required.' });
+      const { count, error: paymentCountError } = await supabase.from('payments').select('id', { count: 'exact', head: true }).eq('invoice_id', id);
+      if (paymentCountError) throw paymentCountError;
+      if ((count || 0) > 0) return res.status(409).json({ error: 'Invoices with recorded payments cannot be deleted. Void or retain the payment history instead.' });
       const { error } = await supabase.from('invoices').delete().eq('id', id);
       if (error) throw error;
       return res.status(200).json({ ok: true });

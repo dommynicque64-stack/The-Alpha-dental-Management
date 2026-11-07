@@ -31,7 +31,8 @@ insert into public.clinic_settings (key, value)
 values
   ('software_name', 'DentalCare'),
   ('theme', 'purple-pink'),
-  ('logo_url', '')
+  ('logo_url', ''),
+  ('clinic_website', '')
 on conflict (key) do nothing;
 
 insert into storage.buckets (id, name, public)

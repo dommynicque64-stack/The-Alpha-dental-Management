@@ -112,6 +112,7 @@ export function RecordModal({ patientId, dentists, existing, tooth, onClose, onS
 
   const save = async () => {
     if (!form.diagnosis.trim()) { setError('Diagnosis is required.'); return; }
+    if (!form.dentist_id) { setError('Please select the treating dentist.'); return; }
     setBusy(true); setError('');
     try {
       if (existing) {

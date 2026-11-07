@@ -50,7 +50,8 @@ export default async function handler(req, res) {
         let singleQuery = supabase.from('appointments').select('*').eq('id', id);
         if (staff.role === 'dentist') singleQuery = singleQuery.eq('dentist_id', staff.id);
         const { data, error } = await singleQuery.single();
-        if (error) throw error;
+        if (error) return res.status(error.code === 'PGRST116' ? 404 : 500).json({ error: error.code === 'PGRST116' ? 'Appointment not found.' : error.message });
+        if (!data) return res.status(404).json({ error: 'Appointment not found.' });
         const [row] = await enrich([data]);
         return res.status(200).json(row);
       }
@@ -76,6 +77,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Patient, dentist, date, start and end time are required.' });
       }
       if (start_time >= end_time) return res.status(400).json({ error: 'End time must be after start time.' });
+      const { data: patient, error: patientError } = await supabase.from('patients').select('id,status').eq('id', patient_id).maybeSingle();
+      if (patientError) throw patientError;
+      if (!patient || patient.status === 'archived') return res.status(404).json({ error: 'Patient not found or archived.' });
       const { data: assignedDentist, error: dentistError } = await supabase.from('clinic_staff').select('id').eq('id', dentist_id).eq('role', 'dentist').eq('status', 'active').maybeSingle();
       if (dentistError) throw dentistError;
       if (!assignedDentist) return res.status(400).json({ error: 'Select an active staff member with the Dentist role.' });
@@ -99,10 +103,14 @@ export default async function handler(req, res) {
       let currentQuery = supabase.from('appointments').select('*').eq('id', id);
       if (staff.role === 'dentist') currentQuery = currentQuery.eq('dentist_id', staff.id);
       const { data: current, error: curErr } = await currentQuery.single();
-      if (curErr) throw curErr;
+      if (curErr) return res.status(curErr.code === 'PGRST116' ? 404 : 500).json({ error: curErr.code === 'PGRST116' ? 'Appointment not found.' : curErr.message });
       if (staff.role === 'dentist') {
         delete patch.dentist_id;
         delete patch.patient_id;
+      }
+      const allowedFields = new Set(['dentist_id', 'patient_id', 'appointment_date', 'start_time', 'end_time', 'reason', 'status', 'notes']);
+      for (const key of Object.keys(patch)) {
+        if (!allowedFields.has(key) && key !== 'updated_at') delete patch[key];
       }
       const next = { ...current, ...patch };
       if (patch.dentist_id !== undefined) {
@@ -129,6 +137,11 @@ export default async function handler(req, res) {
       const id = req.body?.id || req.query.id;
       const hard = req.query.hard === '1';
       if (!id) return res.status(400).json({ error: 'id is required.' });
+      if (staff.role === 'dentist') {
+        const { data: owned, error: ownedError } = await supabase.from('appointments').select('id').eq('id', id).eq('dentist_id', staff.id).maybeSingle();
+        if (ownedError) throw ownedError;
+        if (!owned) return res.status(404).json({ error: 'Appointment not found.' });
+      }
       if (hard && staff.role !== 'admin') return res.status(403).json({ error: 'Only admins can permanently delete.' });
       if (hard) {
         const { error } = await supabase.from('appointments').delete().eq('id', id);

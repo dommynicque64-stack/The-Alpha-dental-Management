@@ -6,3 +6,4 @@ alter table public.patients add column if not exists consent_signed_at timestamp
 
 -- The existing address column and values are preserved; only the UI label changes.
 \ninsert into public.clinic_settings (key, value) values ('software_name','Alpha Dental Management') on conflict (key) do nothing;\n
+insert into public.clinic_settings (key, value) values ('clinic_website','') on conflict (key) do nothing;

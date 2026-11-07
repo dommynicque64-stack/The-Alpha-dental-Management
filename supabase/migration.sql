@@ -273,6 +273,7 @@ insert into clinic_settings (key, value) values
   ('clinic_address', 'Kimathi Street, Nairobi, Kenya'),
   ('clinic_phone', '+254712000000'),
   ('clinic_email', 'info@dentalcare.com'),
+  ('clinic_website', ''),
   ('working_hours', 'Mon–Sat 08:00–18:00'),
   ('currency', 'KES'),
   ('appointment_slot_minutes', '30'),

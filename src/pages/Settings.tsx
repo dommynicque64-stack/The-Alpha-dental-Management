@@ -10,6 +10,7 @@ const FIELDS: { key: string; label: string; type?: string; textarea?: boolean; h
   { key: 'clinic_address', label: 'Address', textarea: true },
   { key: 'clinic_phone', label: 'Phone' },
   { key: 'clinic_email', label: 'Email', type: 'email' },
+  { key: 'clinic_website', label: 'Official website URL', type: 'url' },
   { key: 'working_hours', label: 'Working hours' },
   { key: 'currency', label: 'Currency' },
   { key: 'appointment_slot_minutes', label: 'Default slot (minutes)', type: 'number' },

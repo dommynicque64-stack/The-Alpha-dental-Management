@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, CreditCard, Printer } from 'lucide-react';
+import { Plus, Search, CreditCard, Printer, FileSpreadsheet } from 'lucide-react';
 import { apiFetch, formatKES, canWriteBilling } from '../lib/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, PageHeader, Btn, Badge, Input, Select, Empty, Spinner, Modal, Field } from '../components/ui';
@@ -8,10 +8,12 @@ import { Card, PageHeader, Btn, Badge, Input, Select, Empty, Spinner, Modal, Fie
 interface Invoice {
   id: number; invoice_number: string; patient_id: number; treatment_id?: number | null; treatment_name?: string; original_amount?: number; discount_amount?: number; total_amount: number;
   amount_paid: number; balance: number; status: string; issue_date: string; due_date: string | null;
+  patient_name?: string; patient_phone?: string; patient_email?: string; patient_address?: string;
 }
 interface Payment {
   id: number; invoice_id: number; patient_id: number; amount: number;
   payment_method: string; payment_date: string; reference_number: string | null;
+  patient_name?: string; patient_phone?: string; patient_email?: string; patient_address?: string;
 }
 
 export default function Billing() {
@@ -42,15 +44,39 @@ export default function Billing() {
 
       const list = (inv as Invoice[]) || [];
       const pMap: Record<number, string> = {};
+      const pDetails: Record<number, { phone?: string; email?: string; address?: string }> = {};
       const missing = [...new Set(list.map((x) => x.patient_id))];
       for (const mid of missing.slice(0, 30)) {
         try {
-          const one = await apiFetch(`/api/patients?id=${mid}`) as { first_name: string; last_name: string };
+          const one = await apiFetch(`/api/patients?id=${mid}`) as { first_name: string; last_name: string; phone?: string; email?: string; address?: string };
           pMap[mid] = `${one.first_name} ${one.last_name}`;
+          pDetails[mid] = { phone: one.phone, email: one.email, address: one.address };
         } catch { pMap[mid] = `#${mid}`; }
       }
-      setInvoices(list.map((x) => ({ ...x, patient_name: pMap[x.patient_id] || `#${x.patient_id}`, treatment_name: x.treatment_id ? treatmentMap[Number(x.treatment_id)] || '' : '' })));
-      setPayments((pay as Payment[]) || []);
+      setInvoices(list.map((x) => ({
+        ...x,
+        patient_name: pMap[x.patient_id] || `#${x.patient_id}`,
+        patient_phone: pDetails[x.patient_id]?.phone,
+        patient_email: pDetails[x.patient_id]?.email,
+        patient_address: pDetails[x.patient_id]?.address,
+        treatment_name: x.treatment_id ? treatmentMap[Number(x.treatment_id)] || '' : '',
+      })));
+      const paymentList = (pay as Payment[]) || [];
+      for (const payment of paymentList) {
+        if (pMap[payment.patient_id]) continue;
+        try {
+          const one = await apiFetch(`/api/patients?id=${payment.patient_id}`) as { first_name: string; last_name: string; phone?: string; email?: string; address?: string };
+          pMap[payment.patient_id] = `${one.first_name} ${one.last_name}`;
+          pDetails[payment.patient_id] = { phone: one.phone, email: one.email, address: one.address };
+        } catch { pMap[payment.patient_id] = `#${payment.patient_id}`; }
+      }
+      setPayments(paymentList.map((p) => ({
+        ...p,
+        patient_name: pMap[p.patient_id] || `#${p.patient_id}`,
+        patient_phone: pDetails[p.patient_id]?.phone,
+        patient_email: pDetails[p.patient_id]?.email,
+        patient_address: pDetails[p.patient_id]?.address,
+      })));
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load billing'); }
     finally { setLoading(false); }
   };
@@ -69,7 +95,14 @@ export default function Billing() {
       <PageHeader
         title="Billing & Payments"
         subtitle={`${formatKES(outstanding)} outstanding · ${formatKES(collected)} collected`}
-        actions={canWrite ? <Btn onClick={() => setInvModal(true)}><Plus className="h-4 w-4" /> New Invoice</Btn> : undefined}
+        actions={
+          <div className="flex gap-2">
+            <Btn variant="secondary" onClick={() => exportInvoicesExcel(filtered, branding)} disabled={filtered.length === 0}>
+              <FileSpreadsheet className="h-4 w-4" /> Export Excel
+            </Btn>
+            {canWrite ? <Btn onClick={() => setInvModal(true)}><Plus className="h-4 w-4" /> New Invoice</Btn> : null}
+          </div>
+        }
       />
       <Card className="mb-4 p-4">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -113,7 +146,7 @@ export default function Billing() {
                       </button>
                     )}
                     <button onClick={() => printInvoice(i, branding)} className="ml-1 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                      <Printer className="h-3.5 w-3.5" /> Print Invoice
+                      <Printer className="h-3.5 w-3.5" /> Print / Download Invoice
                     </button>
                   </div>
                 ))}
@@ -130,7 +163,9 @@ export default function Billing() {
                       <p className="text-sm font-bold text-slate-800">{formatKES(p.amount)}</p>
                       <p className="text-[11px] uppercase tracking-wide text-slate-500">{p.payment_method} · {p.payment_date}{p.reference_number ? ` · ${p.reference_number}` : ''}</p>
                     </div>
-                    <span className="text-[11px] text-slate-400">#{p.invoice_id}</span>
+                    <button onClick={() => printPayment(p, invoices, branding)} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
+                      <Printer className="h-3 w-3" /> Receipt
+                    </button>
                   </div>
                 ))}
               </div>
@@ -144,6 +179,49 @@ export default function Billing() {
   );
 }
 
+async function exportInvoicesExcel(invoices: (Invoice & { patient_name?: string })[], branding: Record<string, string>) {
+  const { default: ExcelJS } = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = branding.clinic_name || 'Clinic Management System';
+  const sheet = workbook.addWorksheet('Invoices', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'Invoice Number', key: 'invoice_number', width: 18 },
+    { header: 'Issue Date', key: 'issue_date', width: 14 },
+    { header: 'Patient', key: 'patient_name', width: 24 },
+    { header: 'Service / Treatment', key: 'treatment_name', width: 24 },
+    { header: 'Original Amount', key: 'original_amount', width: 18 },
+    { header: 'Discount', key: 'discount_amount', width: 14 },
+    { header: 'Final Payable', key: 'total_amount', width: 18 },
+    { header: 'Amount Paid', key: 'amount_paid', width: 16 },
+    { header: 'Outstanding Balance', key: 'balance', width: 20 },
+    { header: 'Payment Status', key: 'status', width: 16 },
+  ];
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+  for (const invoice of invoices) {
+    sheet.addRow({
+      ...invoice,
+      original_amount: Number(invoice.original_amount ?? invoice.total_amount),
+      discount_amount: Number(invoice.discount_amount || 0),
+      total_amount: Number(invoice.total_amount),
+      amount_paid: Number(invoice.amount_paid),
+      balance: Number(invoice.balance),
+      status: invoice.status === 'partially_paid' ? 'Partial' : invoice.status === 'paid' ? 'Paid' : 'Unpaid',
+    });
+  }
+  for (const row of sheet.getRows(2, sheet.rowCount - 1) || []) {
+    for (const col of [5, 6, 7, 8, 9]) row.getCell(col).numFmt = 'KES #,##0.00';
+  }
+  const clinicName = branding.clinic_name || 'Clinic';
+  const buffer = await workbook.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${clinicName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'clinic'}-invoices.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function printInvoice(invoice: Invoice & { patient_name?: string }, branding: Record<string, string>) {
   const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
   if (!win) { alert('Please allow pop-ups to print the invoice.'); return; }
@@ -151,11 +229,28 @@ function printInvoice(invoice: Invoice & { patient_name?: string }, branding: Re
   const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c] || c));
   win.document.write(`<!doctype html><html><head><title>${esc(invoice.invoice_number)}</title><style>
   body{font-family:Arial,sans-serif;color:#172033;margin:40px}.head{display:flex;justify-content:space-between;border-bottom:2px solid #6d28d9;padding-bottom:18px}.brand{font-size:22px;font-weight:800}.muted{color:#64748b;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:30px}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left}.num{text-align:right}.total{font-size:18px;font-weight:800}.status{display:inline-block;padding:6px 10px;border-radius:999px;background:#f1f5f9}.foot{margin-top:45px;color:#64748b;font-size:12px}@media print{body{margin:20px}}
-  </style></head><body><div class="head"><div>${branding.logo_url ? `<img src="${esc(branding.logo_url)}" style="max-height:70px;max-width:180px;object-fit:contain;margin-bottom:8px" />` : ''}<div class="brand">${esc(clinic)}</div><div class="muted">${esc(branding.clinic_address || '')}</div><div class="muted">${esc(branding.clinic_phone || '')} · ${esc(branding.clinic_email || '')}</div></div><div style="text-align:right"><h1>INVOICE</h1><div class="muted">${esc(invoice.invoice_number)}</div><div class="muted">Issued: ${esc(invoice.issue_date)}</div></div></div>
-  <p><strong>Patient:</strong> ${esc(invoice.patient_name || `#${invoice.patient_id}`)}</p>${invoice.treatment_name ? `<p><strong>Service:</strong> ${esc(invoice.treatment_name)}</p>` : ''}
+  </style></head><body><div class="head"><div>${branding.logo_url ? `<img src="${esc(branding.logo_url)}" style="max-height:70px;max-width:180px;object-fit:contain;margin-bottom:8px" />` : ''}<div class="brand">${esc(clinic)}</div><div class="muted">${esc(branding.clinic_address || '')}</div><div class="muted">${esc(branding.clinic_phone || '')} · ${esc(branding.clinic_email || '')}</div><div class="muted">${esc(branding.clinic_website || '')}</div></div><div style="text-align:right"><h1>INVOICE</h1><div class="muted">${esc(invoice.invoice_number)}</div><div class="muted">Issued: ${esc(invoice.issue_date)}</div></div></div>
+  <p><strong>Patient:</strong> ${esc(invoice.patient_name || `#${invoice.patient_id}`)}</p><p class="muted">${esc(invoice.patient_address || '')}${invoice.patient_phone ? `<br>${esc(invoice.patient_phone)}` : ''}${invoice.patient_email ? ` · ${esc(invoice.patient_email)}` : ''}</p>${invoice.treatment_name ? `<p><strong>Service:</strong> ${esc(invoice.treatment_name)}</p>` : ''}
   <table><thead><tr><th>Invoice / Service</th><th class="num">Amount</th></tr></thead><tbody><tr><td>${esc(invoice.invoice_number)}</td><td class="num">${formatKES(invoice.original_amount ?? invoice.total_amount)}</td></tr>${Number(invoice.discount_amount || 0) > 0 ? `<tr><td>Discount</td><td class="num">-${formatKES(invoice.discount_amount)}</td></tr>` : ''}<tr><td><strong>Payable</strong></td><td class="num"><strong>${formatKES(invoice.total_amount)}</strong></td></tr></tbody><tfoot><tr><td class="total">Paid</td><td class="num">${formatKES(invoice.amount_paid)}</td></tr><tr><td class="total">Balance</td><td class="num">${formatKES(invoice.balance)}</td></tr></tfoot></table>
   <p><span class="status">${esc(invoice.status === 'paid' ? 'Paid' : invoice.status === 'partially_paid' ? 'Partial' : 'Unpaid')}</span></p>
   <div class="foot">Thank you for choosing ${esc(clinic)}. This invoice was generated by the clinic management system.</div><script>window.onload=()=>window.print();</script></body></html>`);
+  win.document.close();
+}
+
+function printPayment(payment: Payment, invoices: Invoice[], branding: Record<string, string>) {
+  const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
+  if (!win) { alert('Please allow pop-ups to print the receipt.'); return; }
+  const clinic = branding.clinic_name || branding.software_name || 'DentalCare Clinic';
+  const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c] || c));
+  const invoice = invoices.find(i => i.id === payment.invoice_id);
+  const receiptNumber = `RCP-${new Date().getFullYear()}-${String(payment.id).padStart(6, '0')}`;
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(receiptNumber)}</title><style>
+  body{font-family:Arial,sans-serif;color:#172033;margin:40px}.head{display:flex;justify-content:space-between;border-bottom:2px solid #0f766e;padding-bottom:18px}.brand{font-size:22px;font-weight:800}.muted{color:#64748b;font-size:13px}.amount{font-size:26px;font-weight:800;color:#0f766e}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:11px;border-bottom:1px solid #e2e8f0;text-align:left}th{color:#64748b;width:45%}@media print{body{margin:20px}}
+  </style></head><body><div class="head"><div>${branding.logo_url ? `<img src="${esc(branding.logo_url)}" style="height:78px;width:180px;object-fit:contain" />` : ''}<div class="brand">${esc(clinic)}</div><div class="muted">${esc(branding.clinic_address || '')}</div><div class="muted">${esc(branding.clinic_phone || '')} · ${esc(branding.clinic_email || '')}</div><div class="muted">${esc(branding.clinic_website || '')}</div></div><div style="text-align:right"><h1>PAYMENT RECEIPT</h1><div class="muted">${esc(receiptNumber)}</div><div class="muted">${esc(payment.payment_date)}</div></div></div>
+  <p><strong>Received from:</strong> ${esc(payment.patient_name || invoice?.patient_name || `#${payment.patient_id}`)}</p><p class="muted">${esc(invoice?.patient_address || payment.patient_address || '')}${invoice?.patient_phone || payment.patient_phone ? `<br>${esc(invoice?.patient_phone || payment.patient_phone || '')}` : ''}${invoice?.patient_email || payment.patient_email ? ` · ${esc(invoice?.patient_email || payment.patient_email || '')}` : ''}</p>
+  <p class="amount">${esc(formatKES(payment.amount))}</p>
+  <table><tbody><tr><th>Invoice number</th><td>${esc(invoice?.invoice_number || `#${payment.invoice_id}`)}</td></tr><tr><th>Payment date</th><td>${esc(payment.payment_date)}</td></tr><tr><th>Payment method</th><td>${esc(payment.payment_method)}</td></tr><tr><th>Transaction / reference number</th><td>${esc(payment.reference_number || '—')}</td></tr><tr><th>Amount paid</th><td><strong>${esc(formatKES(payment.amount))}</strong></td></tr><tr><th>Outstanding balance</th><td><strong>${esc(formatKES(invoice?.balance || 0))}</strong></td></tr></tbody></table>
+  <p class="muted" style="margin-top:40px">Issued by ${esc(clinic)}. Thank you.</p><script>window.onload=()=>window.print();</script></body></html>`);
   win.document.close();
 }
 

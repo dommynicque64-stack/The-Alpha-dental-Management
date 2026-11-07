@@ -102,20 +102,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      if (staff.role !== 'admin') return res.status(403).json({ error: 'Only admins can void payments.' });
-      const id = req.body?.id || req.query.id;
-      if (!id) return res.status(400).json({ error: 'id is required.' });
-      const { data: pay, error: fErr } = await supabase.from('payments').select('*').eq('id', id).single();
-      if (fErr) throw fErr;
-      const { error: dErr } = await supabase.from('payments').delete().eq('id', id);
-      if (dErr) throw dErr;
-      const { data: inv } = await supabase.from('invoices').select('*').eq('id', pay.invoice_id).single();
-      if (inv) {
-        const amountPaid = Math.max(0, Number(inv.amount_paid || 0) - Number(pay.amount));
-        const balance = Number(inv.total_amount) - amountPaid;
-        await supabase.from('invoices').update({ amount_paid: amountPaid, balance, status: balance <= 0 ? 'paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid') }).eq('id', inv.id);
-      }
-      return res.status(200).json({ ok: true });
+      return res.status(409).json({ error: 'Payment records are immutable financial history and cannot be deleted. Contact the clinic administrator to issue a reversal workflow.' });
     }
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {

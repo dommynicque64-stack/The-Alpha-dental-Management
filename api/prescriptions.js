@@ -11,8 +11,14 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       if (!hasPerm(staff, 'clinical.read')) return res.status(403).json({ error: 'Forbidden.' });
       let q = supabase.from('prescriptions').select('*').order('prescribed_date', { ascending: false }).limit(300);
-      if (staff.role === 'dentist') q = q.eq('dentist_id', staff.id);
-      if (req.query.patient_id) q = q.eq('patient_id', req.query.patient_id);
+      if (req.query.patient_id) {
+        if (!(await dentistCanAccessPatient(staff, req.query.patient_id))) return res.status(404).json({ error: 'Patient not found.' });
+        q = q.eq('patient_id', req.query.patient_id);
+      } else if (staff.role === 'dentist') {
+        const ids = await getDentistPatientIds(staff);
+        if (!ids.length) return res.status(200).json([]);
+        q = q.in('patient_id', ids);
+      }
       if (req.query.id) q = q.eq('id', req.query.id);
       const { data, error } = await q;
       if (error) throw error;
@@ -40,6 +46,9 @@ export default async function handler(req, res) {
       const allowed = ['medication', 'dosage', 'frequency', 'duration', 'instructions', 'prescribed_date', 'dentist_id'];
       const patch = Object.fromEntries(Object.entries(input).filter(([key]) => allowed.includes(key)));
       if (!patch.medication || !String(patch.medication).trim()) return res.status(400).json({ error: 'Medication is required.' });
+      const existing = await supabase.from('prescriptions').select('patient_id').eq('id', id).single();
+      if (existing.error || !existing.data) return res.status(404).json({ error: 'Prescription not found.' });
+      if (!(await dentistCanAccessPatient(staff, existing.data.patient_id))) return res.status(404).json({ error: 'Prescription not found.' });
       const { data, error } = await supabase.from('prescriptions').update(patch).eq('id', id).select().single();
       if (error) throw error;
       return res.status(200).json(data);
@@ -48,6 +57,9 @@ export default async function handler(req, res) {
       if (!hasPerm(staff, 'clinical.write')) return res.status(403).json({ error: 'Forbidden.' });
       const id = req.body?.id || req.query.id;
       if (!id) return res.status(400).json({ error: 'id is required.' });
+      const existing = await supabase.from('prescriptions').select('patient_id').eq('id', id).single();
+      if (existing.error || !existing.data) return res.status(404).json({ error: 'Prescription not found.' });
+      if (!(await dentistCanAccessPatient(staff, existing.data.patient_id))) return res.status(404).json({ error: 'Prescription not found.' });
       const { error } = await supabase.from('prescriptions').delete().eq('id', id);
       if (error) throw error;
       return res.status(200).json({ ok: true });

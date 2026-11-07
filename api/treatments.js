@@ -13,8 +13,14 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Forbidden.' });
       }
       let q = supabase.from('treatments').select('*').order('treatment_date', { ascending: false }).limit(300);
-      if (staff.role === 'dentist') q = q.eq('dentist_id', staff.id);
-      if (req.query.patient_id) q = q.eq('patient_id', req.query.patient_id);
+      if (req.query.patient_id) {
+        if (!(await dentistCanAccessPatient(staff, req.query.patient_id))) return res.status(404).json({ error: 'Patient not found.' });
+        q = q.eq('patient_id', req.query.patient_id);
+      } else if (staff.role === 'dentist') {
+        const ids = await getDentistPatientIds(staff);
+        if (!ids.length) return res.status(200).json([]);
+        q = q.in('patient_id', ids);
+      }
       if (req.query.status) q = q.eq('status', req.query.status);
       if (req.query.id) q = q.eq('id', req.query.id);
       const { data, error } = await q;
@@ -41,9 +47,18 @@ export default async function handler(req, res) {
       if (!hasPerm(staff, 'clinical.write')) return res.status(403).json({ error: 'Forbidden: your role cannot modify clinical records.' });
       const { id, ...patch } = req.body || {};
       if (!id) return res.status(400).json({ error: 'id is required.' });
+      const existing = await supabase.from('treatments').select('*').eq('id', id).single();
+      if (existing.error || !existing.data) return res.status(404).json({ error: 'Treatment not found.' });
+      if (!(await dentistCanAccessPatient(staff, existing.data.patient_id))) return res.status(404).json({ error: 'Treatment not found.' });
+      const allowed = ['dentist_id', 'appointment_id', 'procedure_name', 'tooth_number', 'treatment_date', 'cost', 'status', 'notes'];
+      const safePatch = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
       if (patch.cost != null) patch.cost = Number(patch.cost);
+      if (safePatch.cost != null) {
+        safePatch.cost = Number(safePatch.cost);
+        if (!Number.isFinite(safePatch.cost) || safePatch.cost < 0) return res.status(400).json({ error: 'Treatment cost must be a non-negative number.' });
+      }
       patch.updated_at = new Date().toISOString();
-      const { data, error } = await supabase.from('treatments').update(patch).eq('id', id).select().single();
+      const { data, error } = await supabase.from('treatments').update({ ...safePatch, updated_at: patch.updated_at }).eq('id', id).select().single();
       if (error) throw error;
       return res.status(200).json(data);
     }
@@ -51,6 +66,9 @@ export default async function handler(req, res) {
       if (!hasPerm(staff, 'clinical.write')) return res.status(403).json({ error: 'Forbidden.' });
       const id = req.body?.id || req.query.id;
       if (!id) return res.status(400).json({ error: 'id is required.' });
+      const existing = await supabase.from('treatments').select('patient_id').eq('id', id).single();
+      if (existing.error || !existing.data) return res.status(404).json({ error: 'Treatment not found.' });
+      if (!(await dentistCanAccessPatient(staff, existing.data.patient_id))) return res.status(404).json({ error: 'Treatment not found.' });
       const { error } = await supabase.from('treatments').delete().eq('id', id);
       if (error) throw error;
       return res.status(200).json({ ok: true });

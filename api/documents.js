@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { sendCors, requireAuth, hasPerm } from './auth-helper.js';
+import { sendCors, requireAuth, hasPerm, dentistCanAccessPatient, getDentistPatientIds } from './auth-helper.js';
 
 // Documents metadata. Binary upload goes to the Supabase Storage bucket
 // `patient-documents` via /api/upload; this route stores the metadata row.
@@ -12,7 +12,14 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       if (!hasPerm(staff, 'patients.read')) return res.status(403).json({ error: 'Forbidden.' });
       let q = supabase.from('documents').select('*').order('uploaded_at', { ascending: false }).limit(200);
-      if (req.query.patient_id) q = q.eq('patient_id', req.query.patient_id);
+      if (req.query.patient_id) {
+        if (!(await dentistCanAccessPatient(staff, req.query.patient_id))) return res.status(404).json({ error: 'Patient not found.' });
+        q = q.eq('patient_id', req.query.patient_id);
+      } else if (staff.role === 'dentist') {
+        const ids = await getDentistPatientIds(staff);
+        if (!ids.length) return res.status(200).json([]);
+        q = q.in('patient_id', ids);
+      }
       const { data, error } = await q;
       if (error) throw error;
       const rows = await Promise.all((data || []).map(async (doc) => {
@@ -29,6 +36,7 @@ export default async function handler(req, res) {
       if (staff.role === 'accountant') return res.status(403).json({ error: 'Forbidden.' });
       const b = req.body || {};
       if (!b.patient_id || !b.file_name || !b.file_url) return res.status(400).json({ error: 'patient_id, file_name and file_url are required.' });
+      if (!(await dentistCanAccessPatient(staff, b.patient_id))) return res.status(404).json({ error: 'Patient not found.' });
       const { data, error } = await supabase.from('documents').insert({
         patient_id: b.patient_id, file_name: b.file_name, file_url: b.file_url,
         file_type: b.file_type || null, file_size: b.file_size || null,
@@ -42,6 +50,9 @@ export default async function handler(req, res) {
       const id = req.body?.id || req.query.id;
       if (!id) return res.status(400).json({ error: 'id is required.' });
       const { data: doc } = await supabase.from('documents').select('*').eq('id', id).single();
+      if (doc?.patient_id && !(await dentistCanAccessPatient(staff, doc.patient_id))) {
+        return res.status(404).json({ error: 'Document not found.' });
+      }
       if (doc?.storage_path) {
         await supabase.storage.from('patient-documents').remove([doc.storage_path]);
       }

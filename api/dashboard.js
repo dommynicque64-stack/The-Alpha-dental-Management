@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { sendCors, requireAuth, hasPerm, todayNairobi } from './auth-helper.js';
+import { sendCors, requireAuth, hasPerm, todayNairobi, getDentistPatientIds } from './auth-helper.js';
 
 // Dashboard KPIs + reports aggregates (computed server-side from real data).
 // GET /api/dashboard           -> KPI cards for today
@@ -19,6 +19,9 @@ export default async function handler(req, res) {
       }
       const from = req.query.from || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
       const to = req.query.to || today;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to)) || from > to) {
+        return res.status(400).json({ error: 'Valid from and to dates are required, and from must not exceed to.' });
+      }
       const [{ data: payments }, { data: invoices }, { data: appointments }, { data: treatments }] = await Promise.all([
         supabase.from('payments').select('payment_date, amount, payment_method').gte('payment_date', from).lte('payment_date', to).limit(2000),
         supabase.from('invoices').select('issue_date, total_amount, amount_paid, status').gte('issue_date', from).lte('issue_date', to).limit(2000),
@@ -58,11 +61,19 @@ export default async function handler(req, res) {
       });
     }
 
+    let patientQuery = supabase.from('patients').select('id', { count: 'exact', head: true }).eq('status', 'active');
+    let appointmentQuery = supabase.from('appointments').select('id, status, appointment_date, start_time, patient_id, dentist_id').eq('appointment_date', today).order('start_time');
+    if (staff.role === 'dentist') {
+      patientQuery = supabase.from('patients').select('id', { count: 'exact', head: true }).eq('status', 'active').in('id', (await getDentistPatientIds(staff)));
+      appointmentQuery = appointmentQuery.eq('dentist_id', staff.id);
+    }
+    const financialAllowed = staff.role === 'admin' || staff.role === 'accountant';
+    const todayPaymentAllowed = staff.role === 'admin' || staff.role === 'accountant' || staff.role === 'receptionist';
     const [{ count: totalPatients }, { data: todayAppts }, { data: invoices }, { data: todayPayments }] = await Promise.all([
-      supabase.from('patients').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('appointments').select('id, status, appointment_date, start_time, patient_id, dentist_id').eq('appointment_date', today).order('start_time'),
-      supabase.from('invoices').select('balance, status, total_amount, amount_paid'),
-      supabase.from('payments').select('amount').eq('payment_date', today),
+      patientQuery,
+      appointmentQuery,
+      financialAllowed ? supabase.from('invoices').select('balance, status, total_amount, amount_paid') : Promise.resolve({ data: [] }),
+      todayPaymentAllowed ? supabase.from('payments').select('amount').eq('payment_date', today) : Promise.resolve({ data: [] }),
     ]);
     const enriched = todayAppts || [];
     let patientNames = {};

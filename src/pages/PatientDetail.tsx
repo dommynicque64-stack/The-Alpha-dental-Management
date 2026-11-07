@@ -23,6 +23,7 @@ export default function PatientDetail() {
   const [documents, setDocuments] = useState<Record<string, unknown>[]>([]);
   const [invoices, setInvoices] = useState<Record<string, unknown>[]>([]);
   const [dentists, setDentists] = useState<{ id: number; full_name: string }[]>([]);
+  const [clinicSettings, setClinicSettings] = useState<Record<string, string>>({});
   const [editOpen, setEditOpen] = useState(false);
   const [recordModal, setRecordModal] = useState<{ open: boolean; existing?: Record<string, unknown> | null; tooth?: string | null }>({ open: false });
   const [treatModal, setTreatModal] = useState<{ open: boolean; existing?: Record<string, unknown> | null }>({ open: false });
@@ -39,7 +40,7 @@ export default function PatientDetail() {
   const fetchAll = async () => {
     setLoading(true); setError('');
     try {
-      const [p, a, r, t, rx, d, inv, st] = await Promise.all([
+      const [p, a, r, t, rx, d, inv, st, settings] = await Promise.all([
         apiFetch(`/api/patients?id=${id}`),
         apiFetch(`/api/appointments?patient_id=${id}`).catch(() => []),
         apiFetch(`/api/dental-records?patient_id=${id}`).catch(() => []),
@@ -48,6 +49,7 @@ export default function PatientDetail() {
         apiFetch(`/api/documents?patient_id=${id}`).catch(() => []),
         (staff?.role === 'receptionist' ? Promise.resolve([]) : apiFetch(`/api/invoices?patient_id=${id}`).catch(() => [])),
         apiFetch('/api/staff?role=dentist').catch(() => []),
+        apiFetch('/api/settings').catch(() => ({})),
       ]);
       setPatient(p as Record<string, unknown>);
       setAppts((a as Record<string, unknown>[]) || []);
@@ -56,6 +58,7 @@ export default function PatientDetail() {
       setPrescriptions((rx as Record<string, unknown>[]) || []);
       setDocuments((d as Record<string, unknown>[]) || []);
       setInvoices((inv as Record<string, unknown>[]) || []);
+      setClinicSettings((settings as Record<string, string>) || {});
       const dentList = (st as { id: number; full_name: string; status: string }[]).filter((s) => String(s.status).toLowerCase() === 'active').map((s) => ({ id: s.id, full_name: s.full_name }));
       const admins = await apiFetch('/api/staff').catch(() => []) as { id: number; full_name: string; role: string; status: string }[];
       const adminList = (Array.isArray(admins) ? admins : []).filter((s) => String(s.role).toLowerCase() === 'admin' && String(s.status).toLowerCase() === 'active').map((s) => ({ id: s.id, full_name: s.full_name }));
@@ -145,15 +148,18 @@ export default function PatientDetail() {
     const esc = (v: unknown) => String(v ?? '—').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] || c));
     const rows = (items: Record<string, unknown>[], cols: string[]) => items.map(item => `<tr>${cols.map(c => `<td>${esc(item[c])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}">No records</td></tr>`;
     const signature = typeof patient.consent_signature === 'string' ? `<img class="signature" src="${patient.consent_signature}" alt="Patient signature">` : '<p>Not recorded</p>';
+    const clinic = clinicSettings.clinic_name || 'DentalCare Clinic';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Patient record - ${esc(patient.first_name)} ${esc(patient.last_name)}</title><style>
-      body{font:12px Arial,sans-serif;color:#17212b;margin:28px}h1{font-size:22px;margin:0}h2{font-size:15px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:24px}p{line-height:1.5}.meta{color:#526171;margin:5px 0 18px}table{border-collapse:collapse;width:100%;margin:8px 0 16px}td,th{border:1px solid #d5dce3;padding:7px;text-align:left}th{background:#f1f5f9}.signature{max-width:360px;max-height:100px;border:1px solid #ddd}.muted{color:#64748b}@media print{body{margin:15mm}button{display:none}}</style></head><body>
-      <h1>Alpha Dental Management</h1><p class="meta">Confidential patient medical record · Generated ${new Date().toLocaleString()}</p>
+      body{font:12px Arial,sans-serif;color:#17212b;margin:28px}h1{font-size:22px;margin:0}h2{font-size:15px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:24px}p{line-height:1.5}.meta{color:#526171;margin:5px 0 18px}table{border-collapse:collapse;width:100%;margin:8px 0 16px}td,th{border:1px solid #d5dce3;padding:7px;text-align:left}th{background:#f1f5f9}.signature{max-width:360px;max-height:100px;border:1px solid #ddd}.muted{color:#64748b}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0f766e;padding-bottom:14px}.clinic{text-align:right;font-size:11px}.clinic strong{font-size:20px;color:#17212b}.logo{height:82px;width:190px;object-fit:contain}.signature-space{height:70px;border-bottom:1px solid #64748b;margin-top:6px;width:280px}@media print{body{margin:15mm}button{display:none}}</style></head><body>
+      <div class="header"><div>${clinicSettings.logo_url ? `<img class="logo" src="${esc(clinicSettings.logo_url)}" alt="${esc(clinic)} logo">` : ''}</div><div class="clinic"><strong>${esc(clinic)}</strong><br>${esc(clinicSettings.clinic_address)}<br>${esc(clinicSettings.clinic_phone)} · ${esc(clinicSettings.clinic_email)}<br>${esc(clinicSettings.clinic_website)}</div></div>
+      <p class="meta">Confidential patient medical record · Generated ${new Date().toLocaleString()}</p>
       <h2>Patient details</h2><table><tbody>${[['Patient ID',patient.id],['Name',`${patient.first_name} ${patient.last_name}`],['Date of birth',patient.date_of_birth],['Gender',patient.gender],['Phone',patient.phone],['Email',patient.email],['Residence',patient.address],['Patient type',patient.patient_type],['Blood type',patient.blood_type],['Allergies',patient.allergies],['Medical history',patient.medical_history]].map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
-      <h2>Dental records and clinical notes</h2><table><thead><tr><th>Date</th><th>Tooth</th><th>Diagnosis</th><th>Treatment plan</th><th>Notes</th></tr></thead><tbody>${rows(records,['record_date','tooth_number','diagnosis','treatment_plan','notes'])}</tbody></table>
+      <h2>Dental records and clinical notes</h2><table><thead><tr><th>Date</th><th>Tooth</th><th>Diagnosis</th><th>Treatment plan</th><th>Notes</th><th>Treating dentist</th></tr></thead><tbody>${records.map(r => `<tr><td>${esc(r.record_date)}</td><td>${esc(r.tooth_number)}</td><td>${esc(r.diagnosis)}</td><td>${esc(r.treatment_plan)}</td><td>${esc(r.notes)}</td><td>${esc(r.dentist_name || dentists.find(d => d.id === Number(r.dentist_id))?.full_name || 'Not recorded')}</td></tr>`).join('') || '<tr><td colspan="6">No records</td></tr>'}</tbody></table>
       <h2>Treatments</h2><table><thead><tr><th>Date</th><th>Procedure</th><th>Tooth</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows(treatments,['treatment_date','procedure_name','tooth_number','status','notes'])}</tbody></table>
       <h2>Prescriptions</h2><table><thead><tr><th>Date</th><th>Medication</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead><tbody>${rows(prescriptions,['prescribed_date','medication','dosage','frequency','duration','instructions'])}</tbody></table>
       ${canBill ? `<h2>Invoices and balances</h2><table><thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows(invoices,['invoice_number','invoice_date','total_amount','amount_paid','balance'])}</tbody></table>` : ''}
       <h2>Consent and acknowledgement</h2><p>${esc(patient.consent_text)}</p><p>Consent acknowledged: ${esc(patient.consent_acknowledged ? 'Yes' : 'No')} · Signed: ${esc(patient.consent_signed_at)}</p>${signature}
+      <h2>Clinician acknowledgement</h2><table><tbody><tr><th>Treating dentist</th><td>${esc(records.map(r => String(r.dentist_name || dentists.find(d => d.id === Number(r.dentist_id))?.full_name || '')).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'Not recorded')}</td></tr></tbody></table><div class="signature-space"></div><p><strong>Dentist signature</strong></p>
       <p class="muted">This document contains confidential health information. Handle and store it securely.</p><script>window.onload=()=>window.print();</script></body></html>`;
     w.document.open(); w.document.write(html); w.document.close();
   };
@@ -284,6 +290,7 @@ export default function PatientDetail() {
                     </div>
                     {r.treatment_plan ? <p className="mt-1.5 text-sm text-slate-600"><b>Plan:</b> {String(r.treatment_plan)}</p> : null}
                     {r.notes ? <p className="mt-1 text-sm text-slate-500">{String(r.notes)}</p> : null}
+                    <p className="mt-1 text-xs text-slate-500"><b>Treating dentist:</b> {String(r.dentist_name || dentists.find(d => d.id === Number(r.dentist_id))?.full_name || 'Not recorded')}</p>
                     {canClinical && (
                       <div className="mt-2 flex gap-1">
                         <button onClick={() => setRecordModal({ open: true, existing: r })} className="rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50">Edit</button>
