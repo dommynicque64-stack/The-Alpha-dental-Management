@@ -63,7 +63,14 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   let data: unknown = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
   if (!res.ok) {
-    const msg = (data as { error?: string })?.error || `Request failed (${res.status})`;
+    const response = data as { error?: string; code?: string; details?: string; hint?: string };
+    const parts = [
+      response.error,
+      response.code ? `Code: ${response.code}` : null,
+      response.details ? `Details: ${response.details}` : null,
+      response.hint ? `Hint: ${response.hint}` : null,
+    ].filter(Boolean);
+    const msg = parts.length ? parts.join(' | ') : `Request failed (${res.status})`;
     throw new Error(msg);
   }
   return data;

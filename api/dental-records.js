@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       if (!hasPerm(staff, 'clinical.write')) return res.status(403).json({ error: 'Forbidden: your role cannot modify clinical records.' });
       const b = req.body || {};
       if (staff.role === 'dentist' && !(await dentistCanAccessPatient(staff, b.patient_id))) return res.status(403).json({ error: 'You can only document patients assigned to you.' });
-      if (!b.patient_id || !b.diagnosis) return res.status(400).json({ error: 'patient_id and diagnosis are required.' });
+      if (!b.patient_id || !String(b.diagnosis || '').trim()) return res.status(400).json({ error: 'patient_id and diagnosis are required.' });
       const patientId = Number(b.patient_id);
       if (!Number.isInteger(patientId) || patientId <= 0) return res.status(400).json({ error: 'A valid patient is required.' });
       const patient = await supabase.from('patients').select('id').eq('id', patientId).maybeSingle();
@@ -55,17 +55,23 @@ export default async function handler(req, res) {
       if (!Number.isInteger(dentistId) || dentistId <= 0) return res.status(400).json({ error: 'A valid treating dentist is required.' });
       const dentist = await supabase.from('clinic_staff').select('id, role, status').eq('id', dentistId).maybeSingle();
       if (dentist.error) throw dentist.error;
-      if (!dentist.data || dentist.data.status !== 'active' || !['dentist', 'admin'].includes(dentist.data.role)) {
+      const dentistRole = String(dentist.data?.role || '').toLowerCase();
+      const dentistStatus = String(dentist.data?.status || '').toLowerCase();
+      if (!dentist.data || dentistStatus !== 'active' || !['dentist', 'admin'].includes(dentistRole)) {
         return res.status(400).json({ error: 'The selected treating dentist is not an active clinic staff member.' });
       }
       const allowedStatuses = ['open', 'in_progress', 'closed'];
       const recordStatus = String(b.status || 'open').toLowerCase();
       if (!allowedStatuses.includes(recordStatus)) return res.status(400).json({ error: 'Invalid dental record status.' });
+      const recordDate = String(b.record_date || new Date().toISOString().slice(0, 10));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(recordDate)) return res.status(400).json({ error: 'A valid record date is required.' });
       const { data, error } = await supabase.from('dental_records').insert({
         patient_id: patientId, dentist_id: dentistId,
-        record_date: b.record_date || new Date().toISOString().slice(0, 10),
-        tooth_number: b.tooth_number || null, diagnosis: b.diagnosis,
-        treatment_plan: b.treatment_plan || null, notes: b.notes || null,
+        record_date: recordDate,
+        tooth_number: String(b.tooth_number || '').trim() || null,
+        diagnosis: String(b.diagnosis).trim(),
+        treatment_plan: String(b.treatment_plan || '').trim() || null,
+        notes: String(b.notes || '').trim() || null,
         status: recordStatus, created_by: user.email,
       }).select().single();
       if (error) throw error;
@@ -103,10 +109,12 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('API /api/dental-records error:', err);
-    const message = err instanceof Error ? err.message : String(err || 'Internal server error');
     const dbCode = err && typeof err === 'object' ? err.code : undefined;
     const dbDetails = err && typeof err === 'object' ? err.details : undefined;
     const dbHint = err && typeof err === 'object' ? err.hint : undefined;
+    const message = err && typeof err === 'object' && err.message
+      ? String(err.message)
+      : (err instanceof Error ? err.message : String(err || 'Internal server error'));
     const status = /violat|invalid|duplicate|foreign key|not-null/i.test(message) ? 400 : 500;
     if (status === 400) {
       return res.status(400).json({ error: message, code: dbCode || null, details: dbDetails || null, hint: dbHint || null });

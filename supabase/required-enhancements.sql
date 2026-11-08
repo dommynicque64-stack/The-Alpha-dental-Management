@@ -76,3 +76,35 @@ begin
   end loop;
 end;
 $$;
+
+-- Ensure the dental-record columns used by the API exist in an older database.
+-- These are additive only and preserve all existing dental records.
+alter table public.dental_records
+  add column if not exists record_date text;
+
+alter table public.dental_records
+  add column if not exists tooth_number text;
+
+alter table public.dental_records
+  add column if not exists diagnosis text;
+
+alter table public.dental_records
+  add column if not exists treatment_plan text;
+
+alter table public.dental_records
+  add column if not exists notes text;
+
+alter table public.dental_records
+  add column if not exists status text;
+
+alter table public.dental_records
+  add column if not exists created_by text;
+
+alter table public.dental_records
+  add column if not exists updated_at timestamptz default now();
+
+update public.dental_records
+set record_date = coalesce(record_date, created_at::date::text),
+    status = coalesce(status, 'open')
+where record_date is null or status is null;
+WHE
