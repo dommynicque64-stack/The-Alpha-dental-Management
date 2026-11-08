@@ -145,8 +145,8 @@ export default function Billing() {
                         <CreditCard className="h-3.5 w-3.5" /> Pay
                       </button>
                     )}
-                    <button onClick={() => printInvoice(i, branding)} className="ml-1 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                      <Printer className="h-3.5 w-3.5" /> Print / Download Invoice
+                    <button onClick={() => downloadInvoice(i, branding)} className="ml-1 mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                      <Printer className="h-3.5 w-3.5" /> Download PDF Invoice
                     </button>
                   </div>
                 ))}
@@ -163,7 +163,7 @@ export default function Billing() {
                       <p className="text-sm font-bold text-slate-800">{formatKES(p.amount)}</p>
                       <p className="text-[11px] uppercase tracking-wide text-slate-500">{p.payment_method} · {p.payment_date}{p.reference_number ? ` · ${p.reference_number}` : ''}</p>
                     </div>
-                    <button onClick={() => printPayment(p, invoices, branding)} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
+                    <button onClick={() => downloadPayment(p, invoices, branding)} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
                       <Printer className="h-3 w-3" /> Receipt
                     </button>
                   </div>
@@ -222,36 +222,132 @@ async function exportInvoicesExcel(invoices: (Invoice & { patient_name?: string 
   URL.revokeObjectURL(url);
 }
 
-function printInvoice(invoice: Invoice & { patient_name?: string }, branding: Record<string, string>) {
-  const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!win) { alert('Please allow pop-ups to print the invoice.'); return; }
-  const clinic = branding.clinic_name || branding.software_name || 'DentalCare Clinic';
-  const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c] || c));
-  win.document.write(`<!doctype html><html><head><title>${esc(invoice.invoice_number)}</title><style>
-  body{font-family:Arial,sans-serif;color:#172033;margin:40px}.head{display:flex;justify-content:space-between;border-bottom:2px solid #6d28d9;padding-bottom:18px}.brand{font-size:22px;font-weight:800}.muted{color:#64748b;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:30px}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:left}.num{text-align:right}.total{font-size:18px;font-weight:800}.status{display:inline-block;padding:6px 10px;border-radius:999px;background:#f1f5f9}.foot{margin-top:45px;color:#64748b;font-size:12px}@media print{body{margin:20px}}
-  </style></head><body><div class="head"><div>${branding.logo_url ? `<img src="${esc(branding.logo_url)}" style="max-height:70px;max-width:180px;object-fit:contain;margin-bottom:8px" />` : ''}<div class="brand">${esc(clinic)}</div><div class="muted">${esc(branding.clinic_address || '')}</div><div class="muted">${esc(branding.clinic_phone || '')} · ${esc(branding.clinic_email || '')}</div><div class="muted">${esc(branding.clinic_website || '')}</div></div><div style="text-align:right"><h1>INVOICE</h1><div class="muted">${esc(invoice.invoice_number)}</div><div class="muted">Issued: ${esc(invoice.issue_date)}</div></div></div>
-  <p><strong>Patient:</strong> ${esc(invoice.patient_name || `#${invoice.patient_id}`)}</p><p class="muted">${esc(invoice.patient_address || '')}${invoice.patient_phone ? `<br>${esc(invoice.patient_phone)}` : ''}${invoice.patient_email ? ` · ${esc(invoice.patient_email)}` : ''}</p>${invoice.treatment_name ? `<p><strong>Service:</strong> ${esc(invoice.treatment_name)}</p>` : ''}
-  <table><thead><tr><th>Invoice / Service</th><th class="num">Amount</th></tr></thead><tbody><tr><td>${esc(invoice.invoice_number)}</td><td class="num">${formatKES(invoice.original_amount ?? invoice.total_amount)}</td></tr>${Number(invoice.discount_amount || 0) > 0 ? `<tr><td>Discount</td><td class="num">-${formatKES(invoice.discount_amount)}</td></tr>` : ''}<tr><td><strong>Payable</strong></td><td class="num"><strong>${formatKES(invoice.total_amount)}</strong></td></tr></tbody><tfoot><tr><td class="total">Paid</td><td class="num">${formatKES(invoice.amount_paid)}</td></tr><tr><td class="total">Balance</td><td class="num">${formatKES(invoice.balance)}</td></tr></tfoot></table>
-  <p><span class="status">${esc(invoice.status === 'paid' ? 'Paid' : invoice.status === 'partially_paid' ? 'Partial' : 'Unpaid')}</span></p>
-  <div class="foot">Thank you for choosing ${esc(clinic)}. This invoice was generated by the clinic management system.</div><script>window.onload=()=>window.print();</script></body></html>`);
-  win.document.close();
+async function loadPdfLogo(url?: string) {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
 }
 
-function printPayment(payment: Payment, invoices: Invoice[], branding: Record<string, string>) {
-  const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!win) { alert('Please allow pop-ups to print the receipt.'); return; }
+function addPdfClinicHeader(doc: import('jspdf').jsPDF, branding: Record<string, string>, title: string) {
   const clinic = branding.clinic_name || branding.software_name || 'DentalCare Clinic';
-  const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c] || c));
+  doc.setFillColor(15, 118, 110);
+  doc.rect(0, 0, 210, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text(clinic, 15, 22);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(branding.clinic_address || '', 15, 28);
+  doc.text(`${branding.clinic_phone || ''}${branding.clinic_email ? `  |  ${branding.clinic_email}` : ''}`, 15, 33);
+  if (branding.clinic_website) doc.text(branding.clinic_website, 15, 38);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(15, 118, 110);
+  doc.text(title, 195, 22, { align: 'right' });
+  doc.setDrawColor(203, 213, 225);
+  doc.line(15, 43, 195, 43);
+  return clinic;
+}
+
+async function downloadInvoice(invoice: Invoice & { patient_name?: string }, branding: Record<string, string>) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF();
+  const logo = await loadPdfLogo(branding.logo_url);
+  if (logo) {
+    try { doc.addImage(logo, logo.startsWith('data:image/png') ? 'PNG' : 'JPEG', 158, 14, 37, 20); } catch { /* Logo remains optional */ }
+  }
+  const clinic = addPdfClinicHeader(doc, branding, 'INVOICE');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  doc.text(invoice.invoice_number, 195, 49, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Issued: ${invoice.issue_date}`, 195, 55, { align: 'right' });
+  doc.text(`Patient: ${invoice.patient_name || `#${invoice.patient_id}`}`, 15, 52);
+  if (invoice.patient_address) doc.text(invoice.patient_address, 15, 58);
+  if (invoice.patient_phone || invoice.patient_email) doc.text(`${invoice.patient_phone || ''}${invoice.patient_email ? `  |  ${invoice.patient_email}` : ''}`, 15, 64);
+  let y = 74;
+  const rows: [string, string][] = [
+    ['Invoice / Service', invoice.treatment_name || invoice.invoice_number],
+    ['Original amount', formatKES(invoice.original_amount ?? invoice.total_amount)],
+    ['Discount', formatKES(Number(invoice.discount_amount || 0))],
+    ['Final payable amount', formatKES(invoice.total_amount)],
+    ['Amount paid', formatKES(invoice.amount_paid)],
+    ['Outstanding balance', formatKES(invoice.balance)],
+    ['Payment status', invoice.status === 'paid' ? 'Paid' : invoice.status === 'partially_paid' ? 'Partially paid' : 'Unpaid'],
+  ];
+  for (const [label, value] of rows) {
+    doc.setFont('helvetica', label === 'Outstanding balance' || label === 'Final payable amount' ? 'bold' : 'normal');
+    doc.setTextColor(30, 41, 59);
+    doc.text(label, 15, y);
+    doc.text(value, 195, y, { align: 'right' });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, y + 3, 195, y + 3);
+    y += 10;
+  }
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Thank you for choosing ${clinic}.`, 15, 280);
+  doc.save(`${invoice.invoice_number.replace(/[^a-z0-9]+/gi, '-')}-invoice.pdf`);
+}
+
+async function downloadPayment(payment: Payment, invoices: Invoice[], branding: Record<string, string>) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF();
+  const logo = await loadPdfLogo(branding.logo_url);
+  if (logo) {
+    try { doc.addImage(logo, logo.startsWith('data:image/png') ? 'PNG' : 'JPEG', 158, 14, 37, 20); } catch { /* Logo remains optional */ }
+  }
+  const clinic = addPdfClinicHeader(doc, branding, 'PAYMENT RECEIPT');
   const invoice = invoices.find(i => i.id === payment.invoice_id);
   const receiptNumber = `RCP-${new Date().getFullYear()}-${String(payment.id).padStart(6, '0')}`;
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(receiptNumber)}</title><style>
-  body{font-family:Arial,sans-serif;color:#172033;margin:40px}.head{display:flex;justify-content:space-between;border-bottom:2px solid #0f766e;padding-bottom:18px}.brand{font-size:22px;font-weight:800}.muted{color:#64748b;font-size:13px}.amount{font-size:26px;font-weight:800;color:#0f766e}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:11px;border-bottom:1px solid #e2e8f0;text-align:left}th{color:#64748b;width:45%}@media print{body{margin:20px}}
-  </style></head><body><div class="head"><div>${branding.logo_url ? `<img src="${esc(branding.logo_url)}" style="height:78px;width:180px;object-fit:contain" />` : ''}<div class="brand">${esc(clinic)}</div><div class="muted">${esc(branding.clinic_address || '')}</div><div class="muted">${esc(branding.clinic_phone || '')} · ${esc(branding.clinic_email || '')}</div><div class="muted">${esc(branding.clinic_website || '')}</div></div><div style="text-align:right"><h1>PAYMENT RECEIPT</h1><div class="muted">${esc(receiptNumber)}</div><div class="muted">${esc(payment.payment_date)}</div></div></div>
-  <p><strong>Received from:</strong> ${esc(payment.patient_name || invoice?.patient_name || `#${payment.patient_id}`)}</p><p class="muted">${esc(invoice?.patient_address || payment.patient_address || '')}${invoice?.patient_phone || payment.patient_phone ? `<br>${esc(invoice?.patient_phone || payment.patient_phone || '')}` : ''}${invoice?.patient_email || payment.patient_email ? ` · ${esc(invoice?.patient_email || payment.patient_email || '')}` : ''}</p>
-  <p class="amount">${esc(formatKES(payment.amount))}</p>
-  <table><tbody><tr><th>Invoice number</th><td>${esc(invoice?.invoice_number || `#${payment.invoice_id}`)}</td></tr><tr><th>Payment date</th><td>${esc(payment.payment_date)}</td></tr><tr><th>Payment method</th><td>${esc(payment.payment_method)}</td></tr><tr><th>Transaction / reference number</th><td>${esc(payment.reference_number || '—')}</td></tr><tr><th>Amount paid</th><td><strong>${esc(formatKES(payment.amount))}</strong></td></tr><tr><th>Outstanding balance</th><td><strong>${esc(formatKES(invoice?.balance || 0))}</strong></td></tr></tbody></table>
-  <p class="muted" style="margin-top:40px">Issued by ${esc(clinic)}. Thank you.</p><script>window.onload=()=>window.print();</script></body></html>`);
-  win.document.close();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(receiptNumber, 195, 49, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Payment date: ${payment.payment_date}`, 195, 55, { align: 'right' });
+  doc.text(`Received from: ${payment.patient_name || invoice?.patient_name || `#${payment.patient_id}`}`, 15, 52);
+  if (invoice?.patient_address || payment.patient_address) doc.text(invoice?.patient_address || payment.patient_address || '', 15, 58);
+  if (invoice?.patient_phone || payment.patient_phone || invoice?.patient_email || payment.patient_email) {
+    doc.text(`${invoice?.patient_phone || payment.patient_phone || ''}${invoice?.patient_email || payment.patient_email ? `  |  ${invoice?.patient_email || payment.patient_email || ''}` : ''}`, 15, 64);
+  }
+  let y = 76;
+  const rows: [string, string][] = [
+    ['Invoice number', invoice?.invoice_number || `#${payment.invoice_id}`],
+    ['Payment date', payment.payment_date],
+    ['Payment method', payment.payment_method],
+    ['Transaction / reference number', payment.reference_number || 'Not provided'],
+    ['Amount paid', formatKES(payment.amount)],
+    ['Outstanding balance', formatKES(invoice?.balance || 0)],
+  ];
+  for (const [label, value] of rows) {
+    doc.setFont('helvetica', label === 'Amount paid' || label === 'Outstanding balance' ? 'bold' : 'normal');
+    doc.text(label, 15, y);
+    doc.text(value, 195, y, { align: 'right' });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, y + 3, 195, y + 3);
+    y += 10;
+  }
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Issued by ${clinic}. Thank you.`, 15, 280);
+  doc.save(`${receiptNumber}-receipt.pdf`);
 }
 
 function InvoiceModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {

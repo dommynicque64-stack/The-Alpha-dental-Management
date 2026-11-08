@@ -104,7 +104,18 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('API /api/dental-records error:', err);
     const message = err instanceof Error ? err.message : String(err || 'Internal server error');
+    const dbCode = err && typeof err === 'object' ? err.code : undefined;
+    const dbDetails = err && typeof err === 'object' ? err.details : undefined;
+    const dbHint = err && typeof err === 'object' ? err.hint : undefined;
     const status = /violat|invalid|duplicate|foreign key|not-null/i.test(message) ? 400 : 500;
-    res.status(status).json({ error: status === 400 ? message : 'Unable to save the dental record. Please verify the patient and dentist, then try again.' });
+    if (status === 400) {
+      return res.status(400).json({ error: message, code: dbCode || null, details: dbDetails || null, hint: dbHint || null });
+    }
+    return res.status(500).json({
+      error: 'Unable to save the dental record due to a database error.',
+      code: dbCode || null,
+      details: dbDetails || message,
+      hint: dbHint || null,
+    });
   }
 }

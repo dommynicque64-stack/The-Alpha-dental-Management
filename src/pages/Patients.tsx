@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, PageHeader, Btn, Badge, Input, Select, Empty, Spinner } from '../components/ui';
 
 interface Patient {
-  id: number; first_name: string; last_name: string; phone: string; email: string | null;
+  id: number; outpatient_number?: string | null; first_name: string; last_name: string; phone: string; email: string | null;
   date_of_birth: string | null; gender: string | null; patient_type?: string | null; status: string; created_at: string | null;
 }
 
@@ -72,7 +72,7 @@ export default function Patients() {
         <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, email…" className="pl-9" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, email, OP number…" className="pl-9" />
           </div>
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="active">Active</option>
@@ -114,7 +114,7 @@ export default function Patients() {
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-3 py-3">
                       <Link to={`/patients/${p.id}`} className="font-bold text-teal-700 hover:underline">{p.first_name} {p.last_name}</Link>
-                      <p className="text-xs text-slate-400">#{p.id}</p>
+                      <p className="text-xs font-semibold text-teal-700">{p.outpatient_number || `Patient #${p.id}`}</p>
                     </td>
                     <td className="px-3 py-3">
                       <p className="font-medium text-slate-700">{p.phone}</p>

@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
       const from = (pageNum - 1) * pageSize;
       const to = from + pageSize - 1;
-      const sortable = ['created_at', 'first_name', 'last_name', 'date_of_birth', 'updated_at'];
+      const sortable = ['created_at', 'first_name', 'last_name', 'date_of_birth', 'updated_at', 'outpatient_number'];
       const sortCol = sortable.includes(String(sort)) ? String(sort) : 'created_at';
       let q = supabase.from('patients').select('*', { count: 'exact' });
       if (staff.role === 'dentist') {
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       if (status && status !== 'all') q = q.eq('status', status);
       if (search) {
         const s = String(search).slice(0, 100).replace(/[^a-zA-Z0-9@+._\-\s]/g, '').trim();
-        if (s) q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%`);
+        if (s) q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,outpatient_number.ilike.%${s}%`);
       }
       q = q.order(sortCol, { ascending: order === 'asc' }).range(from, to);
       const { data, error, count } = await q;
@@ -45,6 +45,15 @@ export default async function handler(req, res) {
       if (b.consent_acknowledged !== true || typeof b.consent_signature !== 'string' || b.consent_signature.length > 3000000 || !b.consent_signature.startsWith('data:image/png;base64,')) {
         return res.status(400).json({ error: 'Patient consent acknowledgement and a valid digital signature are required.' });
       }
+      const manualOpNumber = typeof b.outpatient_number === 'string' ? b.outpatient_number.trim().toUpperCase() : '';
+      if (manualOpNumber) {
+        if (manualOpNumber.length > 40 || /[\r\n]/.test(manualOpNumber)) {
+          return res.status(400).json({ error: 'Enter a valid outpatient number.' });
+        }
+        const duplicate = await supabase.from('patients').select('id, first_name, last_name').ilike('outpatient_number', manualOpNumber).limit(1).maybeSingle();
+        if (duplicate.error) throw duplicate.error;
+        if (duplicate.data) return res.status(409).json({ error: `Outpatient number ${manualOpNumber} is already assigned to another patient.` });
+      }
       const { data, error } = await supabase.from('patients').insert({
         first_name: b.first_name, last_name: b.last_name,
         date_of_birth: b.date_of_birth || null, gender: b.gender || null,
@@ -57,13 +66,19 @@ export default async function handler(req, res) {
         insurance_provider: b.insurance_provider || null,
         insurance_number: b.insurance_number || null,
         patient_type: b.patient_type === 'inpatient' ? 'inpatient' : 'outpatient',
+        outpatient_number: manualOpNumber || null,
         consent_acknowledged: b.consent_acknowledged === true,
         consent_text: b.consent_acknowledged === true ? 'I certify that the above information is accurate and complete to the best of my knowledge. I understand that providing incorrect information can be dangerous to my health. I authorize the dental staff to perform the necessary dental services.' : null,
         consent_signature: b.consent_signature || null,
         consent_signed_at: b.consent_signature ? new Date().toISOString() : null,
         status: 'active', created_by: user.email,
       }).select().single();
-      if (error) throw error;
+      if (error) {
+        if (/outpatient.*unique|duplicate|patients_outpatient_number/i.test(error.message || '')) {
+          return res.status(409).json({ error: 'Outpatient number already exists. Please enter a different number.' });
+        }
+        throw error;
+      }
       await supabase.from('notifications').insert({ title: 'New patient registered', message: `${data.first_name} ${data.last_name} was registered by ${staff.full_name}.`, type: 'patient', related_id: `patient:${data.id}`, is_read: false });
       return res.status(201).json(data);
     }
@@ -75,10 +90,24 @@ export default async function handler(req, res) {
         const allowed = ['first_name', 'last_name', 'date_of_birth', 'gender', 'phone', 'email', 'address', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship', 'insurance_provider', 'insurance_number', 'patient_type', 'status'];
         for (const k of Object.keys(patch)) if (!allowed.includes(k)) delete patch[k];
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'outpatient_number')) {
+        const manual = String(patch.outpatient_number || '').trim().toUpperCase();
+        if (!manual) return res.status(400).json({ error: 'Outpatient number cannot be blank. Existing patients will be assigned automatically by the migration.' });
+        if (manual.length > 40 || /[\r\n]/.test(manual)) return res.status(400).json({ error: 'Enter a valid outpatient number.' });
+        const duplicate = await supabase.from('patients').select('id').ilike('outpatient_number', manual).neq('id', Number(id)).limit(1).maybeSingle();
+        if (duplicate.error) throw duplicate.error;
+        if (duplicate.data) return res.status(409).json({ error: `Outpatient number ${manual} is already assigned to another patient.` });
+        patch.outpatient_number = manual;
+      }
       if (!(await dentistCanAccessPatient(staff, id))) return res.status(404).json({ error: 'Patient not found.' });
       patch.updated_at = new Date().toISOString();
       const { data, error } = await supabase.from('patients').update(patch).eq('id', id).select().single();
-      if (error) throw error;
+      if (error) {
+        if (/outpatient.*unique|duplicate|patients_outpatient_number/i.test(error.message || '')) {
+          return res.status(409).json({ error: 'Outpatient number already exists. Please enter a different number.' });
+        }
+        throw error;
+      }
       return res.status(200).json(data);
     }
     if (req.method === 'DELETE') {

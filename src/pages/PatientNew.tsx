@@ -11,6 +11,7 @@ import { Card, Btn, Field, Input, Select, Textarea } from '../components/ui';
 const schema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
+  outpatient_number: z.string().max(40, 'Outpatient number is too long').optional().or(z.literal('')),
   phone: z.string().min(7, 'Enter a valid phone number'),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   date_of_birth: z.string().optional(), gender: z.string().optional(), address: z.string().optional(),
@@ -52,6 +53,10 @@ export default function PatientNew() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="First name" required error={errors.first_name?.message}><Input {...register('first_name')} placeholder="Wanjiru" /></Field>
               <Field label="Last name" required error={errors.last_name?.message}><Input {...register('last_name')} placeholder="Njoroge" /></Field>
+              <Field label="Outpatient number (OP Number)" error={errors.outpatient_number?.message}>
+                <Input {...register('outpatient_number')} placeholder="Leave blank for automatic numbering" />
+                <p className="mt-1 text-xs text-slate-500">Format example: OP-000001-2026. Enter an existing number for a historical record.</p>
+              </Field>
               <Field label="Phone" required error={errors.phone?.message}><Input {...register('phone')} placeholder="+2547…" /></Field>
               <Field label="Email" error={errors.email?.message}><Input {...register('email')} type="email" placeholder="patient@example.com" /></Field>
               <Field label="Date of birth"><Input {...register('date_of_birth')} type="date" /></Field>
