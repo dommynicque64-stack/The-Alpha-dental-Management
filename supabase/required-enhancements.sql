@@ -107,4 +107,3 @@ update public.dental_records
 set record_date = coalesce(record_date, created_at::date::text),
     status = coalesce(status, 'open')
 where record_date is null or status is null;
-WHE
